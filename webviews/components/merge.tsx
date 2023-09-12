@@ -245,16 +245,21 @@ export const ReadyForReview = ({ isSimple }: { isSimple: boolean }) => {
 };
 
 export const Merge = (pr: PullRequest) => {
-	const select = useRef<HTMLSelectElement>();
+	const select = useRef<HTMLSelectElement | null>(null);
 	const [selectedMethod, selectMethod] = useState<MergeMethod | null>(null);
 
+	if (selectedMethod === 'rebase') {
+		return <ConfirmRebaseMerge cancel={() => selectMethod(null)} />;
+	}
 	if (selectedMethod) {
 		return <ConfirmMerge pr={pr} method={selectedMethod} cancel={() => selectMethod(null)} />;
 	}
 
 	return (
 		<div className="automerge-section wrapper">
-			<button onClick={() => selectMethod(select.current.value as MergeMethod)}>Merge Pull Request</button>
+			<button onClick={() => selectMethod((select.current?.value ?? null) as MergeMethod | null)}>
+				Merge Pull Request
+			</button>
 			{nbsp}using method{nbsp}
 			<MergeSelect ref={select} {...pr} />
 		</div>
@@ -352,13 +357,22 @@ export const DeleteBranch = (pr: PullRequest) => {
 	}
 };
 
-function ConfirmMerge({ pr, method, cancel }: { pr: PullRequest; method: MergeMethod; cancel: () => void }) {
+function ConfirmMerge({
+	pr,
+	method,
+	cancel,
+}: {
+	pr: PullRequest;
+	method: Exclude<MergeMethod, 'rebase'>;
+	cancel: () => void;
+}) {
 	const { merge, updatePR } = useContext(PullRequestContext);
 	const [isBusy, setBusy] = useState(false);
 
 	return (
 		<div>
-			<form id='merge-comment-form'
+			<form
+				id="merge-comment-form"
 				onSubmit={async event => {
 					event.preventDefault();
 
@@ -379,8 +393,50 @@ function ConfirmMerge({ pr, method, cancel }: { pr: PullRequest; method: MergeMe
 				<input type="text" name="title" defaultValue={getDefaultTitleText(method, pr)} />
 				<textarea name="description" defaultValue={getDefaultDescriptionText(method, pr)} />
 				<div className="form-actions">
-					<button className="secondary" onClick={cancel}>Cancel</button>
-					<button disabled={isBusy} type="submit" id="confirm-merge">{MERGE_METHODS[method]}</button>
+					<button className="secondary" onClick={cancel}>
+						Cancel
+					</button>
+					<button disabled={isBusy} type="submit" id="confirm-merge">
+						{MERGE_METHODS[method]}
+					</button>
+				</div>
+			</form>
+		</div>
+	);
+}
+
+function ConfirmRebaseMerge({ cancel }: { cancel: () => void }) {
+	const { merge, updatePR } = useContext(PullRequestContext);
+	const [isBusy, setBusy] = useState(false);
+
+	return (
+		<div>
+			<form
+				id="merge-comment-form"
+				onSubmit={async event => {
+					event.preventDefault();
+
+					try {
+						setBusy(true);
+						const { state } = await merge({
+							// GitHub merge API doesn't care about title or description for rebase
+							title: '',
+							description: '',
+							method: 'rebase',
+						});
+						updatePR({ state });
+					} finally {
+						setBusy(false);
+					}
+				}}
+			>
+				<div className="form-actions">
+					<button className="secondary" onClick={cancel}>
+						Cancel
+					</button>
+					<button disabled={isBusy} type="submit" id="confirm-merge">
+						{MERGE_METHODS.rebase}
+					</button>
 				</div>
 			</form>
 		</div>
